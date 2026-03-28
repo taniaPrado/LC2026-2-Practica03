@@ -32,12 +32,42 @@ FORMAS NORMALES
 
 --Ejercicio 1
 fnn :: Prop -> Prop
-fnn = undefined
+fnn (Cons a) = Cons a
+fnn (Var p) = Var p
+
+fnn (Or a b) = Or (fnn a) (fnn b)
+fnn (And a b) = And (fnn a) (fnn b)
+
+fnn (Impl a b) = Or (fnn (Not a)) (fnn b)
+fnn (Syss a b) = And (fnn (Impl a b)) (fnn (Impl b a))
+
+--Negaciones
+fnn (Not (Cons True)) = Cons False
+fnn (Not (Cons False)) = Cons True
+
+fnn (Not (Not a)) = fnn a
+fnn (Not (Var p)) = Not (Var p )
+
+fnn (Not (Or a b)) =  (And (fnn (Not a)) (fnn(Not b)) )
+fnn (Not (And a b)) = (Or  (fnn (Not a)) (fnn(Not b)) )
+
+fnn (Not (Impl a b)) = fnn (Not (fnn (Impl a b)))
+fnn (Not (Syss a b)) = fnn (Not (fnn (Syss a b)))
 
 
 --Ejercicio 2
 fnc :: Prop -> Prop
-fnc = undefined
+fnc p = auxFnc (fnn p)
+    where 
+        auxFnc :: Prop -> Prop 
+        auxFnc (And p q) = And (auxFnc p) (auxFnc q)
+        auxFnc (Or p q) = distribuir (auxFnc p) (auxFnc q)
+        auxFnc p = p 
+
+distribuir :: Prop -> Prop -> Prop
+distribuir p (And q r) = And (distribuir p q) (distribuir p r)
+distribuir (And p q) r = And (distribuir p r) (distribuir q r)
+distribuir p q = Or p q
 
 {-
 RESOLUCION BINARIA
@@ -49,11 +79,52 @@ type Clausula = [Literal]
 
 --Ejercicio 1
 clausulas :: Prop -> [Clausula]
-clausulas = undefined
+clausulas (And p q) = clausulas p ++ clausulas q
+clausulas p = [revisa(generaClausula p)]
+    where
+        generaClausula :: Literal -> Clausula
+        generaClausula (Cons True)  = [Cons True]
+        generaClausula (Cons False) = []
+        generaClausula (Or p q) = generaClausula p ++ generaClausula q
+        generaClausula (Var p) = ((Var p):[])
+        generaClausula (Not (Var p)) = ((Not (Var p)):[]) 
+
+revisa :: Clausula -> Clausula
+revisa [] = []
+revisa (x:xs)
+    | x == (Cons False) = revisa (revisaAux x xs)
+    | x /= (Cons True) = x : revisa (revisaAux x xs)
+    | otherwise = [Cons True]
+        where 
+            revisaAux :: Literal -> Clausula -> Clausula
+            revisaAux _ [] = []
+            revisaAux e (y:ys)
+                | e == y = revisaAux e ys
+                | otherwise = y : revisaAux e ys
 
 --Ejercicio 2
 resolucion :: Clausula -> Clausula -> Clausula
-resolucion = undefined
+resolucion c1 c2 = buscarYResolver c1 c1 c2
+  where
+    buscarYResolver [] o1 o2 = revisa (o1 ++ o2)
+    buscarYResolver (x:xs) o1 o2
+        | existe (opuesto x) o2 = revisa (quitar x o1 ++ quitar (opuesto x) o2)
+        | otherwise = buscarYResolver xs o1 o2    
+
+opuesto :: Literal -> Literal
+opuesto (Var p) = Not (Var p)
+opuesto (Not (Var p)) = Var p
+opuesto x = x
+
+existe :: Literal -> Clausula -> Bool
+existe _ [] = False
+existe l (x:xs) = l == x || existe l xs
+
+quitar :: Literal -> Clausula -> Clausula
+quitar _ [] = []
+quitar l (x:xs)
+    | l == x    = xs
+    | otherwise = x : quitar l xs
 
 {-
 ALGORITMO DE SATURACION
@@ -61,9 +132,26 @@ ALGORITMO DE SATURACION
 
 --Ejercicio 1
 hayResolvente :: Clausula -> Clausula -> Bool
-hayResolvente = undefined
+hayResolvente clau1 clau2 = not (null [ x | x <- clau1,
+                    case x of
+                     Var y        -> Not (Var y) `elem` clau2
+                     Not (Var y)  -> Var y `elem` clau2
+                     _            -> False ])
 
 --Ejercicio 2
 --Funcion principal que pasa la formula proposicional a fnc e invoca a res con las clausulas de la formula.
 saturacion :: Prop -> Bool
-saturacion = undefined
+saturacion p = resN (clausulas (fnc p))
+
+resN :: [Clausula] -> Bool
+resN conjuntoClausulas
+    | [] `elem` conjuntoClausulas = False
+    | nuevos == [] = True
+    | otherwise = resN (conjuntoClausulas ++ nuevos)
+  where
+  nuevos =
+    [ resolvente | clau1 <- conjuntoClausulas
+        , clau2 <- conjuntoClausulas
+        , hayResolvente clau1 clau2
+        , let resolvente = resolucion clau1 clau2
+        , not (resolvente `elem` conjuntoClausulas)]
